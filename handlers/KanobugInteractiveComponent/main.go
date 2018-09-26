@@ -189,7 +189,7 @@ func createIssue(request Request) {
 		"fields": map[string]interface{}{
 			"project":     map[string]string{"key": "IQ"},
 			"summary":     bug.Summary,
-			"description": fmt.Sprintf("Product: %s.\nReporter: %s.\n\n%s", bug.ProductName(), bug.UserName, bug.Details),
+			"description": fmt.Sprintf("Product: %s\nReporter: %s\n\n%s", bug.ProductName(), bug.UserName, bug.Details),
 			"issuetype":   map[string]string{"name": "Bug"},
 			"labels":      []string{"slack"},
 			"priority":    map[string]string{"name": "Not Yet Prioritized"},
@@ -229,7 +229,8 @@ func createIssue(request Request) {
 	defer rr.Body.Close()
 
 	payload, _ := json.Marshal(map[string]interface{}{
-		"text": fmt.Sprintf("Bug submitted - ID: %s, Key: %s\nLink: %s", issue.ID, issue.Key, issue.Self),
+		"text": fmt.Sprintf("Bug submitted - ID: %s, Key: %s, Issue Link: %s",
+			issue.ID, issue.Key, fmt.Sprintf("https://%s/projects/IQ/issues/%s", os.Getenv("JIRA_API_HOST"), issue.Key)),
 	})
 	req, reqErr := http.NewRequest("POST", request.ResponseURL, bytes.NewBuffer(payload))
 	if reqErr != nil {
