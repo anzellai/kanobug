@@ -1,0 +1,9 @@
+{
+    "name": "kanome-kanobug",
+    "description": "Slack command app server for submitting JIRA bug tracker",
+    "version": "0.1.0",
+    "dependencies": {
+        "serverless-plugin-scripts": "^1.0.2",
+        "serverless-prune-plugin": "^1.3.1"
+    }
+}

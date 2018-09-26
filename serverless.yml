@@ -1,0 +1,86 @@
+service: kanome-kanobug
+
+frameworkVersion: ">=1.28.0 <2.0.0"
+
+provider:
+  name: aws
+  runtime: go1.x
+  memorySize: 128
+  timeout: 30
+  profile: kanome
+  region: us-west-1
+  stage: tracker
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DeleteItem
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:UpdateItem
+      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TABLE_NAME}
+  environment:
+    REGION: us-west-1
+    TABLE_NAME: ${self:service}-db-${opt:stage, self:provider.stage}
+    SLACK_ACCESS_TOKEN: ${ssm:/us/kanome/slack/kanobug/app-token~true}
+    SLACK_VERIFICATION_TOKEN: ${ssm:/us/kanome/slack/kanobug/app-verification-token~true}
+
+plugins:
+  - serverless-prune-plugin
+  - serverless-plugin-scripts
+
+custom:
+  prune:
+    automatic: true
+    number: 10
+  scripts:
+    hooks:
+      'deploy:createDeploymentArtifacts': make
+
+package:
+  exclude:
+    - ./**
+  include:
+    - ./bin/**
+
+functions:
+  KanowinsCommand:
+    handler: bin/KanobugCommand
+    events:
+      - http:
+          path: /command
+          method: post 
+          cors: true
+  KanowinsInteractiveComponent:
+    handler: bin/KanobugInteractiveComponent
+    events:
+      - http:
+          path: /interactive-component
+          method: post
+          cors: true
+
+resources:
+  Resources:
+    Table:
+      Type: AWS::DynamoDB::Table
+      # DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: created_at
+            AttributeType: S
+
+        KeySchema:
+          - AttributeName: user_id
+            KeyType: HASH
+          - AttributeName: created_at
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:service}-db-${opt:stage, self:provider.stage}
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: True
