@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -21,6 +24,8 @@ import (
 const (
 	handler     = "KanobugInteractiveComponent"
 	apiEndpoint = "https://slack.com/api/dialog.open"
+	apiWebhook  = "https://hooks.slack.com/services/%s"
+	jiraHost    = "https://%s/rest/api/2/issue/"
 )
 
 // Response is of type APIGatewayProxyResponse since we're leveraging the
@@ -66,6 +71,11 @@ type Bug struct {
 	TTL       int64     `json:"ttl"`
 }
 
+// ProductName return title case product
+func (bug Bug) ProductName() string {
+	return strings.ToTitle(strings.Replace(bug.Product, "_", " ", -1))
+}
+
 // GetDB return DDB handle
 func GetDB() (srv *dynamodb.DynamoDB, err error) {
 	region := os.Getenv("REGION")
@@ -77,8 +87,8 @@ func GetDB() (srv *dynamodb.DynamoDB, err error) {
 	return
 }
 
-// PutItem upsert WIN instance to db
-func (request Request) PutItem() (err error) {
+// ToBug transform request details to Bug
+func (request Request) ToBug() Bug {
 	details := request.Submission.Details
 	if len(details) == 0 {
 		details = "N/A"
@@ -93,6 +103,12 @@ func (request Request) PutItem() (err error) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	return bug
+}
+
+// PutItem upsert BUG instance to db
+func (request Request) PutItem() (err error) {
+	bug := request.ToBug()
 	defer log.Printf(
 		"%s.PutItem (%s/%s/%s/%s) - error: %v",
 		handler,
@@ -145,6 +161,8 @@ func Handler(ctx context.Context, r ProxyRequest) (Response, error) {
 		}, err
 	}
 
+	defer createIssue(request)
+
 	err = request.PutItem()
 	log.Printf("%s.Handler - submitted: %+v, error: %v", handler, request, err)
 
@@ -158,6 +176,78 @@ func Handler(ctx context.Context, r ProxyRequest) (Response, error) {
 	}
 
 	return resp, nil
+}
+
+func createIssue(request Request) {
+	bug := request.ToBug()
+
+	jiraURL := fmt.Sprintf(jiraHost, os.Getenv("JIRA_API_HOST"))
+	jiraUser := os.Getenv("JIRA_API_USER")
+	jiraToken := os.Getenv("JIRA_API_TOKEN")
+
+	inputQueue := map[string]interface{}{
+		"fields": map[string]interface{}{
+			"project":     map[string]string{"key": "IQ"},
+			"summary":     bug.Summary,
+			"description": fmt.Sprintf("Product: %s.\nReporter: %s.\n\n%s", bug.ProductName(), bug.UserName, bug.Details),
+			"issuetype":   map[string]string{"name": "Bug"},
+			"labels":      []string{"slack"},
+			"priority":    map[string]string{"name": "Not Yet Prioritized"},
+		},
+	}
+
+	iq, err := json.Marshal(inputQueue)
+	log.Printf("%s.Handler - inputQueue: %+v, error: %v", handler, inputQueue, err)
+	if err != nil {
+		return
+	}
+
+	r, err := http.NewRequest("POST", jiraURL, bytes.NewBuffer(iq))
+	if err != nil {
+		log.Printf("%s.Handler - newRequest: %+v, error: %v", handler, inputQueue, err)
+		return
+	}
+	r.SetBasicAuth(jiraUser, jiraToken)
+	r.Header.Set("Content-Type", "application/json")
+	c := &http.Client{}
+	rr, err := c.Do(r)
+	if err != nil {
+		log.Printf("%s.Handler - createIssue: %+v, error: %v", handler, inputQueue, err)
+		return
+	}
+
+	var issue struct {
+		ID   string `json:"id"`
+		Key  string `json:"key"`
+		Self string `json:"self"`
+	}
+	err = json.NewDecoder(rr.Body).Decode(&issue)
+	log.Printf("%s.Handler - issue: %+v, error: %v", handler, issue, err)
+	if err != nil {
+		return
+	}
+	defer rr.Body.Close()
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"text": fmt.Sprintf("Bug submitted - ID: %s, Key: %s\nLink: %s", issue.ID, issue.Key, issue.Self),
+	})
+	req, reqErr := http.NewRequest("POST", request.ResponseURL, bytes.NewBuffer(payload))
+	if reqErr != nil {
+		log.Printf("%s.Handler - error sending dialog response url: %v", handler, reqErr)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("SLACK_ACCESS_TOKEN"))
+	client := &http.Client{}
+	resp, respErr := client.Do(req)
+	if respErr != nil {
+		log.Printf("%s.Handler - error receiving dialog response from response url: %v", handler, reqErr)
+		return
+	}
+	var respBody map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&respBody)
+	log.Printf("%s.Handler - error receiving dialog response Body: %v", handler, respBody)
+	defer resp.Body.Close()
 }
 
 func main() {

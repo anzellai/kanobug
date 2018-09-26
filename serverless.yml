@@ -25,6 +25,11 @@ provider:
     TABLE_NAME: ${self:service}-db-${opt:stage, self:provider.stage}
     SLACK_ACCESS_TOKEN: ${ssm:/us/kanome/slack/kanobug/app-token~true}
     SLACK_VERIFICATION_TOKEN: ${ssm:/us/kanome/slack/kanobug/app-verification-token~true}
+    SLACK_WEBHOOK: ${ssm:/us/kanome/slack/kanobug/app-webhook~true}
+    JIRA_API_HOST: ${ssm:/us/kanome/jira/kanobug/api-host~true}
+    JIRA_API_USER: ${ssm:/us/kanome/jira/kanobug/api-user~true}
+    JIRA_API_TOKEN: ${ssm:/us/kanome/jira/kanobug/api-token~true}
+
 
 plugins:
   - serverless-prune-plugin

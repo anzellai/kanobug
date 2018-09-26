@@ -129,6 +129,22 @@ func Handler(ctx context.Context, r ProxyRequest) (Response, error) {
 							Label: "Harry Potter Coding Kit",
 							Value: "harry_potter_coding_kit",
 						},
+						Option{
+							Label: "Computer Kit Touch",
+							Value: "computer_kit_touch",
+						},
+						Option{
+							Label: "Computer Kit 2018",
+							Value: "computer_kit_2018",
+						},
+						Option{
+							Label: "Pixel Kit",
+							Value: "pixel_kit",
+						},
+						Option{
+							Label: "Motion Sensor Kit",
+							Value: "motion_sensor_kit",
+						},
 					},
 				},
 				Element{
