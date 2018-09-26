@@ -9,7 +9,7 @@ provider:
   timeout: 30
   profile: kanome
   region: us-west-1
-  stage: tracker
+  stage: jira
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -45,14 +45,14 @@ package:
     - ./bin/**
 
 functions:
-  KanowinsCommand:
+  KanobugCommand:
     handler: bin/KanobugCommand
     events:
       - http:
           path: /command
           method: post 
           cors: true
-  KanowinsInteractiveComponent:
+  KanobugInteractiveComponent:
     handler: bin/KanobugInteractiveComponent
     events:
       - http:
